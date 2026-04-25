@@ -1,0 +1,29 @@
+{
+  "name": "serverless-order-processor",
+  "version": "1.0.0",
+  "description": "Cost-efficient serverless order processing with Step Functions, API Gateway, and DynamoDB",
+  "scripts": {
+    "build": "tsc",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy",
+    "seed": "npx tsx scripts/seed.ts",
+    "setup": "./scripts/setup.sh",
+    "test:scenarios": "./scripts/test-scenarios.sh",
+    "watch": "cdk watch --hotswap-fallback true"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/lib-dynamodb": "^3.700.0",
+    "aws-cdk-lib": "^2.170.0",
+    "constructs": "^10.4.2",
+    "esbuild": "^0.24.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^22.0.0",
+    "aws-cdk": "^2.1119.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
