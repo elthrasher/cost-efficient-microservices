@@ -33,9 +33,14 @@ export const handler = async (event: ReserveItemInput) => {
     );
 
     return { productId, quantity, reserved: true };
-  } catch (err: any) {
-    if (err.name === "ConditionalCheckFailedException") {
-      throw new Error(`Insufficient inventory for product ${productId}`);
+  } catch (err: unknown) {
+    if (
+      err instanceof Error &&
+      err.name === "ConditionalCheckFailedException"
+    ) {
+      throw new Error(`Insufficient inventory for product ${productId}`, {
+        cause: err,
+      });
     }
     throw err;
   }

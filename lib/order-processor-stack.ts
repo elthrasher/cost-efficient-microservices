@@ -17,11 +17,8 @@ import { Architecture, Runtime } from "aws-cdk-lib/aws-lambda";
 import {
   LambdaIntegration,
   RestApi,
-  AwsIntegration,
-  PassthroughBehavior,
   StepFunctionsIntegration,
 } from "aws-cdk-lib/aws-apigateway";
-import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 
 export class OrderProcessorStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
