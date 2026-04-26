@@ -33,6 +33,14 @@ export class OrderProcessorStack extends Stack {
       tableName: "order-processor-table",
     });
 
+    // Sparse GSI for listing products — only items with a `category` attribute
+    // (products) appear in this index, so orders are excluded automatically.
+    table.addGlobalSecondaryIndex({
+      indexName: "gsi-category",
+      partitionKey: { name: "category", type: AttributeType.STRING },
+      sortKey: { name: "PK", type: AttributeType.STRING },
+    });
+
     // --- Shared Lambda props ---
     const sharedFnProps: Partial<NodejsFunctionProps> = {
       runtime: Runtime.NODEJS_24_X,
