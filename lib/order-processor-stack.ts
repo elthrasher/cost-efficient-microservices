@@ -19,6 +19,7 @@ import {
   RestApi,
   AwsIntegration,
   PassthroughBehavior,
+  StepFunctionsIntegration,
 } from "aws-cdk-lib/aws-apigateway";
 import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 
@@ -124,20 +125,16 @@ export class OrderProcessorStack extends Stack {
       },
     });
 
-    // IAM role for API Gateway to invoke Step Functions
-    const apiSfnRole = new Role(this, "ApiSfnRole", {
-      assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
-    });
-    workflow.stateMachine.grantStartSyncExecution(apiSfnRole);
-
     // POST /orders → Step Functions (sync express execution) with VTL response mapping
     const ordersResource = api.root.addResource("orders");
 
     // VTL request template: pass the request body as the state machine input
     const requestTemplate = [
+      `#set($customerId = $util.parseJson($input.body).get('customerId'))`,
       `{`,
-      `  "stateMachineArn": "${workflow.stateMachine.stateMachineArn}",`,
-      `  "input": "$util.escapeJavaScript($input.body).replaceAll("\\\\'", "'")"`,
+      `  "input": "$util.escapeJavaScript($input.body).replaceAll("\\\\'", "'")",`,
+      `  "name": "$util.escapeJavaScript($customerId)",`,
+      `  "stateMachineArn": "${workflow.stateMachine.stateMachineArn}"`,
       `}`,
     ].join("\n");
 
@@ -159,16 +156,9 @@ export class OrderProcessorStack extends Stack {
       message: "An unexpected error occurred. Please try again.",
     });
 
-    const sfnIntegration = new AwsIntegration({
-      service: "states",
-      action: "StartSyncExecution",
-      integrationHttpMethod: "POST",
-      options: {
-        credentialsRole: apiSfnRole,
-        passthroughBehavior: PassthroughBehavior.NEVER,
-        requestTemplates: {
-          "application/json": requestTemplate,
-        },
+    const sfnIntegration = StepFunctionsIntegration.startExecution(
+      workflow.stateMachine,
+      {
         integrationResponses: [
           {
             // Successful Step Functions execution (HTTP 200 from SFN API)
@@ -194,8 +184,12 @@ export class OrderProcessorStack extends Stack {
             },
           },
         ],
+        requestTemplates: {
+          "application/json": requestTemplate,
+        },
+        useDefaultMethodResponses: false,
       },
-    });
+    );
 
     ordersResource.addMethod("POST", sfnIntegration, {
       methodResponses: [
