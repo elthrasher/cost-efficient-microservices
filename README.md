@@ -2,6 +2,8 @@
 
 A cost-efficient serverless order processing pipeline demonstrating AWS Step Functions (Express), API Gateway, DynamoDB, and Lambda with JSONata transformations.
 
+![Code Blog](./Code_Blog.png)
+
 ## Architecture
 
 - **Express Step Function** orchestrates the order workflow

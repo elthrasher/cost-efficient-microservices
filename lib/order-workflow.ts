@@ -81,11 +81,11 @@ export class OrderWorkflow extends Construct {
     );
 
     // --- Step 1: Transform incoming request (JSONata) ---
-    // API Gateway wraps the request: { body: {...}, querystring: {...}, path: {...} }
-    // Pass the body through as-is; we validate required fields in the next step
+    // Custom AwsIntegration passes the request body directly as the state machine input
+    // (no body/querystring/path wrapper like StepFunctionsIntegration)
     const transformRequest = new Pass(this, "TransformRequest", {
       queryLanguage: QueryLanguage.JSONATA,
-      outputs: "{% $merge([{'orderId': $uuid()}, $states.input.body]) %}",
+      outputs: "{% $merge([{'orderId': $uuid()}, $states.input]) %}",
     });
 
     const formatMissingFieldsError = new Pass(
@@ -112,7 +112,7 @@ export class OrderWorkflow extends Construct {
       queryLanguage: QueryLanguage.JSONATA,
       assign: {
         order:
-          "{% $merge([$states.result.Payload, {'orderId': $states.input.orderId}]) %}",
+          "{% $merge([$states.result.Payload, {'orderId': $states.input.orderId}, $exists($states.input.simulateDecline) ? {'simulateDecline': $states.input.simulateDecline} : {}]) %}",
       },
       outputs: "{% $states.input %}",
     });

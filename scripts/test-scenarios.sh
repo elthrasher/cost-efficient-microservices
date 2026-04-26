@@ -59,6 +59,12 @@ run_test() {
 
 echo "🔍 Testing against: ${API_URL}"
 
+# Re-seed inventory before tests (previous runs may have depleted stock)
+if [ -n "${TABLE_NAME:-}" ]; then
+  echo "📦 Re-seeding inventory..."
+  TABLE_NAME="$TABLE_NAME" npx tsx scripts/seed.ts 2>/dev/null
+fi
+
 # ─── Scenario 1: List products ───
 run_test \
   "List products" \
@@ -90,42 +96,42 @@ run_test \
   "Invalid payment method" \
   "POST" "/orders" \
   '{"customerId":"cust-4","paymentMethod":"bitcoin","items":[{"productId":"prod-1","quantity":1}]}' \
-  "200"
+  "400"
 
 # ─── Scenario 6: Invalid product ID ───
 run_test \
   "Validation failure (bad product)" \
   "POST" "/orders" \
   '{"customerId":"cust-5","paymentMethod":"stripe","items":[{"productId":"prod-999","quantity":1}]}' \
-  "200"
+  "400"
 
 # ─── Scenario 7: Insufficient inventory ───
 run_test \
   "Inventory failure (quantity too high)" \
   "POST" "/orders" \
   '{"customerId":"cust-6","paymentMethod":"stripe","items":[{"productId":"prod-2","quantity":9999}]}' \
-  "200"
+  "400"
 
 # ─── Scenario 8: Multiple items, one bad ───
 run_test \
   "Partial inventory failure (one item out of stock)" \
   "POST" "/orders" \
   '{"customerId":"cust-7","paymentMethod":"stripe","items":[{"productId":"prod-1","quantity":1},{"productId":"prod-4","quantity":9999}]}' \
-  "200"
+  "400"
 
 # ─── Scenario 9: Missing fields ───
 run_test \
   "Validation failure (missing fields)" \
   "POST" "/orders" \
   '{"customerId":"cust-8"}' \
-  "200"
+  "400"
 
 # ─── Scenario 10: Payment decline (simulateDecline) ───
 run_test \
   "Payment decline (simulateDecline)" \
   "POST" "/orders" \
   '{"customerId":"cust-9","paymentMethod":"stripe","items":[{"productId":"prod-8","quantity":1}],"simulateDecline":true}' \
-  "200"
+  "400"
 
 # ─── Summary ───
 echo ""

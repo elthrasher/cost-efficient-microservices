@@ -17,8 +17,10 @@ import { Architecture, Runtime } from "aws-cdk-lib/aws-lambda";
 import {
   LambdaIntegration,
   RestApi,
-  StepFunctionsIntegration,
+  AwsIntegration,
+  PassthroughBehavior,
 } from "aws-cdk-lib/aws-apigateway";
+import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 
 export class OrderProcessorStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -77,12 +79,6 @@ export class OrderProcessorStack extends Stack {
       },
     });
 
-    const refundPaymentFn = new NodejsFunction(this, "RefundPaymentFn", {
-      ...sharedFnProps,
-      entry: path.join(__dirname, "../functions/refund-payment.ts"),
-      functionName: "order-processor-refund-payment",
-    });
-
     const saveOrderFn = new NodejsFunction(this, "SaveOrderFn", {
       ...sharedFnProps,
       entry: path.join(__dirname, "../functions/save-order.ts"),
@@ -128,13 +124,86 @@ export class OrderProcessorStack extends Stack {
       },
     });
 
-    // POST /orders → Step Functions (sync express execution)
+    // IAM role for API Gateway to invoke Step Functions
+    const apiSfnRole = new Role(this, "ApiSfnRole", {
+      assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
+    });
+    workflow.stateMachine.grantStartSyncExecution(apiSfnRole);
+
+    // POST /orders → Step Functions (sync express execution) with VTL response mapping
     const ordersResource = api.root.addResource("orders");
-    const sfnIntegration = StepFunctionsIntegration.startExecution(
-      workflow.stateMachine,
-      { useDefaultMethodResponses: true },
-    );
-    ordersResource.addMethod("POST", sfnIntegration);
+
+    // VTL request template: pass the request body as the state machine input
+    const requestTemplate = [
+      `{`,
+      `  "stateMachineArn": "${workflow.stateMachine.stateMachineArn}",`,
+      `  "input": "$util.escapeJavaScript($input.body).replaceAll("\\\\'", "'")"`,
+      `}`,
+    ].join("\n");
+
+    // VTL response template for successful execution (HTTP 200 from SFN API)
+    // StartSyncExecution returns { status, output, ... } where output is a JSON string.
+    // Check the output for error status and override HTTP status to 400.
+    const successResponseTemplate = [
+      `#set($sfnOutput = $input.path('$.output'))`,
+      `#if($sfnOutput.toString().contains('"status":"error"'))`,
+      `#set($context.responseOverride.status = 400)`,
+      `#end`,
+      `$sfnOutput`,
+    ].join("\n");
+
+    // VTL response template for failed execution (Step Functions API error)
+    const errorResponseTemplate = JSON.stringify({
+      status: "error",
+      error: "internal_error",
+      message: "An unexpected error occurred. Please try again.",
+    });
+
+    const sfnIntegration = new AwsIntegration({
+      service: "states",
+      action: "StartSyncExecution",
+      integrationHttpMethod: "POST",
+      options: {
+        credentialsRole: apiSfnRole,
+        passthroughBehavior: PassthroughBehavior.NEVER,
+        requestTemplates: {
+          "application/json": requestTemplate,
+        },
+        integrationResponses: [
+          {
+            // Successful Step Functions execution (HTTP 200 from SFN API)
+            statusCode: "200",
+            responseTemplates: {
+              "application/json": successResponseTemplate,
+            },
+          },
+          {
+            // Step Functions API errors (throttle, invalid ARN, etc.)
+            selectionPattern: "4\\d{2}",
+            statusCode: "400",
+            responseTemplates: {
+              "application/json": errorResponseTemplate,
+            },
+          },
+          {
+            // Step Functions internal errors
+            selectionPattern: "5\\d{2}",
+            statusCode: "500",
+            responseTemplates: {
+              "application/json": errorResponseTemplate,
+            },
+          },
+        ],
+      },
+    });
+
+    ordersResource.addMethod("POST", sfnIntegration, {
+      methodResponses: [
+        { statusCode: "200" },
+        { statusCode: "400" },
+        { statusCode: "500" },
+      ],
+    });
 
     // GET /orders/{id}
     const orderByIdResource = ordersResource.addResource("{id}");
