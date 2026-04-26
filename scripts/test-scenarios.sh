@@ -59,12 +59,6 @@ run_test() {
 
 echo "🔍 Testing against: ${API_URL}"
 
-# Re-seed inventory before tests (previous runs may have depleted stock)
-if [ -n "${TABLE_NAME:-}" ]; then
-  echo "📦 Re-seeding inventory..."
-  TABLE_NAME="$TABLE_NAME" npx tsx scripts/seed.ts 2>/dev/null
-fi
-
 # ─── Scenario 1: List products ───
 run_test \
   "List products" \

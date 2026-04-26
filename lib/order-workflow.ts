@@ -131,12 +131,18 @@ export class OrderWorkflow extends Construct {
       .otherwise(validateOrder);
 
     // --- Step 3: Reserve inventory (Map — parallel per item) ---
+    // Tolerate all failures so we get results for every item.
+    // Successfully reserved items return {productId, quantity, reserved: true}.
+    // Failed items are caught and return {reserved: false}.
+    // After the Map, we use JSONata to check for failures and only release reserved items.
     const reserveInventory = new Map(this, "ReserveInventory", {
       queryLanguage: QueryLanguage.JSONATA,
       items: ProvideItems.jsonata("{% $order.items %}"),
       maxConcurrency: 0,
       assign: {
         order: "{% $order %}",
+        reservedItems:
+          "{% $count($states.result[reserved = true]) > 0 ? $states.result[reserved = true] : [] %}",
       },
       outputs: "{% $order %}",
     });
@@ -147,34 +153,34 @@ export class OrderWorkflow extends Construct {
       outputs: "{% $states.result.Payload %}",
     });
 
+    // Catch reservation failures within the Map — return a marker instead of failing
+    const reservationFailed = new Pass(this, "ReservationFailed", {
+      queryLanguage: QueryLanguage.JSONATA,
+      outputs: {
+        reserved: false,
+      },
+    });
+    reserveOneItem.addCatch(reservationFailed, { errors: ["States.ALL"] });
+
     reserveInventory.itemProcessor(reserveOneItem);
 
-    // --- Compensation: Release inventory ---
-    const prepareReleaseOnPaymentFail = new Pass(
-      this,
-      "PrepareReleaseOnPaymentFail",
-      {
-        queryLanguage: QueryLanguage.JSONATA,
-        outputs: { items: "{% $order.items %}" },
-      },
-    );
+    // Catch unexpected Map-level errors (not individual item failures)
+    reserveInventory.addCatch(formatInventoryError, {
+      errors: ["States.ALL"],
+    });
 
-    const releaseInventoryOnPaymentFail = new LambdaInvoke(
-      this,
-      "ReleaseInventoryOnPaymentFail",
-      {
-        lambdaFunction: props.releaseInventoryFn,
-        queryLanguage: QueryLanguage.JSONATA,
-        outputs: "{% $states.result.Payload %}",
-      },
-    );
+    // After the Map: check if any reservations failed
+    const checkReservations = new Choice(this, "CheckReservations", {
+      queryLanguage: QueryLanguage.JSONATA,
+    });
 
+    // --- Compensation: Release only reserved items ---
     const prepareReleaseOnReserveFail = new Pass(
       this,
       "PrepareReleaseOnReserveFail",
       {
         queryLanguage: QueryLanguage.JSONATA,
-        outputs: { items: "{% $order.items %}" },
+        outputs: { items: "{% $reservedItems %}" },
       },
     );
 
@@ -188,16 +194,40 @@ export class OrderWorkflow extends Construct {
       },
     );
 
-    // Compensation chains → clean error responses (no Fail states)
+    const prepareReleaseOnPaymentFail = new Pass(
+      this,
+      "PrepareReleaseOnPaymentFail",
+      {
+        queryLanguage: QueryLanguage.JSONATA,
+        outputs: { items: "{% $reservedItems %}" },
+      },
+    );
+
+    const releaseInventoryOnPaymentFail = new LambdaInvoke(
+      this,
+      "ReleaseInventoryOnPaymentFail",
+      {
+        lambdaFunction: props.releaseInventoryFn,
+        queryLanguage: QueryLanguage.JSONATA,
+        outputs: "{% $states.result.Payload %}",
+      },
+    );
+
+    // Compensation chains
     const compensateInventoryAndFail = prepareReleaseOnPaymentFail
       .next(releaseInventoryOnPaymentFail)
       .next(formatPaymentError);
 
-    reserveInventory.addCatch(
-      prepareReleaseOnReserveFail
-        .next(releaseInventoryOnReserveFail)
-        .next(formatInventoryError) as unknown as IChainable,
-      { errors: ["States.ALL"] },
+    // If any reservation failed: release the ones that succeeded, then error
+    const handleReservationFailure = prepareReleaseOnReserveFail
+      .next(releaseInventoryOnReserveFail)
+      .next(formatInventoryError);
+
+    checkReservations.when(
+      Condition.jsonata(
+        "{% $count($states.input.items) != $count($reservedItems) %}",
+      ),
+      handleReservationFailure as unknown as IChainable,
     );
 
     // --- Step 4: Payment routing (Choice + JSONata transforms) ---
@@ -318,6 +348,9 @@ export class OrderWorkflow extends Construct {
       )
       .otherwise(formatInvalidMethodError);
 
+    // Wire checkReservations → routePayment (after routePayment is declared)
+    checkReservations.otherwise(routePayment);
+
     // --- Step 5: Post-payment parallel steps ---
     const mergePaymentResult = new Pass(this, "MergePaymentResult", {
       queryLanguage: QueryLanguage.JSONATA,
@@ -387,7 +420,7 @@ export class OrderWorkflow extends Construct {
     // --- Assemble the chain ---
     // validateRequiredFields routes to validateOrder on success (set in Choice above)
     validateOrder.next(reserveInventory);
-    reserveInventory.next(routePayment);
+    reserveInventory.next(checkReservations);
 
     const definition = transformRequest.next(validateRequiredFields);
 
