@@ -161,34 +161,36 @@ export class OrderProcessorStack extends Stack {
       message: "An unexpected error occurred. Please try again.",
     });
 
+    const integrationResponses = [
+      {
+        // Successful Step Functions execution (HTTP 200 from SFN API)
+        statusCode: "200",
+        responseTemplates: {
+          "application/json": successResponseTemplate,
+        },
+      },
+      {
+        // Step Functions API errors (throttle, invalid ARN, etc.)
+        selectionPattern: "4\\d{2}",
+        statusCode: "400",
+        responseTemplates: {
+          "application/json": errorResponseTemplate,
+        },
+      },
+      {
+        // Step Functions internal errors
+        selectionPattern: "5\\d{2}",
+        statusCode: "500",
+        responseTemplates: {
+          "application/json": errorResponseTemplate,
+        },
+      },
+    ];
+
     const sfnIntegration = StepFunctionsIntegration.startExecution(
       workflow.stateMachine,
       {
-        integrationResponses: [
-          {
-            // Successful Step Functions execution (HTTP 200 from SFN API)
-            statusCode: "200",
-            responseTemplates: {
-              "application/json": successResponseTemplate,
-            },
-          },
-          {
-            // Step Functions API errors (throttle, invalid ARN, etc.)
-            selectionPattern: "4\\d{2}",
-            statusCode: "400",
-            responseTemplates: {
-              "application/json": errorResponseTemplate,
-            },
-          },
-          {
-            // Step Functions internal errors
-            selectionPattern: "5\\d{2}",
-            statusCode: "500",
-            responseTemplates: {
-              "application/json": errorResponseTemplate,
-            },
-          },
-        ],
+        integrationResponses,
         requestTemplates: {
           "application/json": requestTemplate,
         },
