@@ -10,6 +10,7 @@
     "seed": "npx tsx scripts/seed.ts",
     "setup": "./scripts/setup.sh",
     "test:scenarios": "./scripts/test-scenarios.sh",
+    "test:load": "./scripts/load-test.sh",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "watch": "cdk watch --hotswap-fallback true"

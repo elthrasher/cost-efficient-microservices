@@ -14,13 +14,15 @@ const TABLE_NAME: string = tableName;
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
-const products = [
+// Scenario test products — low inventory for testing error paths
+const scenarioProducts = [
   {
     productId: "prod-1",
     name: "Wireless Headphones",
     price: 79.99,
     description: "Bluetooth over-ear headphones with noise cancellation",
     category: "electronics",
+    quantity: 100,
   },
   {
     productId: "prod-2",
@@ -28,6 +30,7 @@ const products = [
     price: 49.99,
     description: "7-in-1 USB-C hub with HDMI, USB-A, and SD card reader",
     category: "electronics",
+    quantity: 100,
   },
   {
     productId: "prod-3",
@@ -35,6 +38,7 @@ const products = [
     price: 129.99,
     description: "Cherry MX Brown switches, RGB backlit",
     category: "electronics",
+    quantity: 100,
   },
   {
     productId: "prod-4",
@@ -43,6 +47,7 @@ const products = [
     description:
       "LED desk lamp with adjustable brightness and color temperature",
     category: "office",
+    quantity: 100,
   },
   {
     productId: "prod-5",
@@ -50,6 +55,7 @@ const products = [
     price: 12.99,
     description: "3-pack of dotted grid notebooks, A5 size",
     category: "office",
+    quantity: 100,
   },
   {
     productId: "prod-6",
@@ -57,6 +63,7 @@ const products = [
     price: 14.99,
     description: "Insulated stainless steel mug, 16oz",
     category: "kitchen",
+    quantity: 100,
   },
   {
     productId: "prod-7",
@@ -64,6 +71,7 @@ const products = [
     price: 44.99,
     description: "Anti-fatigue mat for standing desks",
     category: "office",
+    quantity: 100,
   },
   {
     productId: "prod-8",
@@ -71,28 +79,61 @@ const products = [
     price: 59.99,
     description: "1080p webcam with built-in microphone",
     category: "electronics",
+    quantity: 100,
   },
 ];
 
+// Load test products — high inventory so the load test doesn't exhaust stock
+const loadTestProducts = [
+  {
+    productId: "load-1",
+    name: "Load Test Widget A",
+    price: 9.99,
+    description: "Load test product",
+    category: "electronics",
+    quantity: 1000000,
+  },
+  {
+    productId: "load-2",
+    name: "Load Test Widget B",
+    price: 19.99,
+    description: "Load test product",
+    category: "office",
+    quantity: 1000000,
+  },
+  {
+    productId: "load-3",
+    name: "Load Test Widget C",
+    price: 29.99,
+    description: "Load test product",
+    category: "kitchen",
+    quantity: 1000000,
+  },
+];
+
+const products = [...scenarioProducts, ...loadTestProducts];
+
 const items = products.flatMap((product) => [
-  // Product record
   {
     PutRequest: {
       Item: {
         PK: `PRODUCT#${product.productId}`,
         SK: `PRODUCT#${product.productId}`,
-        ...product,
+        productId: product.productId,
+        name: product.name,
+        price: product.price,
+        description: product.description,
+        category: product.category,
       },
     },
   },
-  // Inventory record
   {
     PutRequest: {
       Item: {
         PK: `PRODUCT#${product.productId}`,
         SK: "INVENTORY",
         productId: product.productId,
-        quantity: 100,
+        quantity: product.quantity,
       },
     },
   },
