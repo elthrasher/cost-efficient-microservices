@@ -6,3 +6,4 @@ cdk-outputs.json
 *.js
 *.d.ts
 !cdk.json
+!load-test.js
