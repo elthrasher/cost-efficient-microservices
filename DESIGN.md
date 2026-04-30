@@ -118,7 +118,6 @@ serverless-order-processor/
 │   ├── reserve-inventory.ts            # Reserve single item (used by Map state)
 │   ├── release-inventory.ts            # Compensation: undo all reservations
 │   ├── process-payment.ts              # Route to processor by config
-│   ├── refund-payment.ts               # Compensation: refund
 │   ├── save-order.ts                   # Write final order to DynamoDB
 │   ├── get-order.ts                    # GET /orders/{id}
 │   └── list-products.ts               # GET /products
